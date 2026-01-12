@@ -145,68 +145,86 @@ def home():
         action = request.form.get("action")
         
         if action == "save_user":
-            # 保存用户信息
-            username = request.form.get("username")
-            email = request.form.get("email")
-            
-            if not username or not email:
-                return render_template("home.html", username=username, email=email, error="用户名和邮箱不能为空")
-            
-            conn = sqlite3.connect(DATABASE)
-            cursor = conn.cursor()
-            
-            # 检查用户是否已存在
-            cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
-            existing_user = cursor.fetchone()
-            
-            if existing_user:
-                # 更新用户信息
-                cursor.execute("UPDATE users SET email = ? WHERE user_id = ?", (email, existing_user[0]))
-                user_id = existing_user[0]
-            else:
-                # 添加新用户
-                cursor.execute("INSERT INTO users (username, email) VALUES (?, ?)", (username, email))
-                user_id = cursor.lastrowid
-            
-            conn.commit()
-            conn.close()
-            
-            # 更新会话
-            session["user_id"] = user_id
-            session["username"] = username
-            session["email"] = email
-            
-            # 刷新数据
-            consecutive_days = get_consecutive_days(user_id)
-            longest_streak = get_longest_streak(user_id)
-            signed_in_today = is_signed_in_today(user_id)
-            
-            return render_template("home.html", username=username, email=email, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, success="用户信息已保存")
+            try:
+                # 保存用户信息
+                username = request.form.get("username")
+                email = request.form.get("email")
+                
+                if not username or not email:
+                    return render_template("home.html", username=username, email=email, error="用户名和邮箱不能为空")
+                
+                # 确保数据库表存在
+                init_db()
+                
+                conn = sqlite3.connect(DATABASE)
+                cursor = conn.cursor()
+                
+                # 检查用户是否已存在
+                cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+                existing_user = cursor.fetchone()
+                
+                if existing_user:
+                    # 更新用户信息
+                    cursor.execute("UPDATE users SET email = ? WHERE user_id = ?", (email, existing_user[0]))
+                    user_id = existing_user[0]
+                else:
+                    # 添加新用户
+                    cursor.execute("INSERT INTO users (username, email) VALUES (?, ?)", (username, email))
+                    user_id = cursor.lastrowid
+                
+                conn.commit()
+                conn.close()
+                
+                # 更新会话
+                session["user_id"] = user_id
+                session["username"] = username
+                session["email"] = email
+                
+                # 刷新数据
+                consecutive_days = get_consecutive_days(user_id)
+                longest_streak = get_longest_streak(user_id)
+                signed_in_today = is_signed_in_today(user_id)
+                
+                return render_template("home.html", username=username, email=email, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, success="用户信息已保存")
+            except Exception as e:
+                # 打印错误信息到日志
+                print(f"保存用户信息错误: {str(e)}")
+                # 返回友好的错误信息给用户
+                return render_template("home.html", username=username, email=email, error="保存用户信息失败，请稍后重试")
         
         elif action == "sign_in":
-            # 执行签到
-            if not user_id:
-                return render_template("home.html", username=username, email=email, error="请先保存用户信息")
-            
-            if signed_in_today:
-                return render_template("home.html", username=username, email=email, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, error="您今日已签到")
-            
-            conn = sqlite3.connect(DATABASE)
-            cursor = conn.cursor()
-            
-            # 添加签到记录
-            today = datetime.date.today().strftime("%Y-%m-%d")
-            cursor.execute("INSERT INTO sign_records (user_id, sign_date) VALUES (?, ?)", (user_id, today))
-            
-            conn.commit()
-            conn.close()
-            
-            # 刷新数据
-            consecutive_days = get_consecutive_days(user_id)
-            longest_streak = get_longest_streak(user_id)
-            signed_in_today = True
-            
-            return render_template("home.html", username=username, email=email, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, success="签到成功")
+            try:
+                # 执行签到
+                if not user_id:
+                    return render_template("home.html", username=username, email=email, error="请先保存用户信息")
+                
+                if signed_in_today:
+                    return render_template("home.html", username=username, email=email, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, error="您今日已签到")
+                
+                # 确保数据库表存在
+                init_db()
+                
+                conn = sqlite3.connect(DATABASE)
+                cursor = conn.cursor()
+                
+                # 添加签到记录
+                today = datetime.date.today().strftime("%Y-%m-%d")
+                cursor.execute("INSERT INTO sign_records (user_id, sign_date) VALUES (?, ?)", (user_id, today))
+                
+                conn.commit()
+                conn.close()
+                
+                # 刷新数据
+                consecutive_days = get_consecutive_days(user_id)
+                longest_streak = get_longest_streak(user_id)
+                signed_in_today = True
+                
+                return render_template("home.html", username=username, email=email, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, success="签到成功")
+            except Exception as e:
+                # 打印错误信息到日志
+                print(f"签到错误: {str(e)}")
+                # 返回友好的错误信息给用户
+                return render_template("home.html", username=username, email=email, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, error="签到失败，请稍后重试")
     
     return render_template("home.html", username=username, email=email, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today)
 

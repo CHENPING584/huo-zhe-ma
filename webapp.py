@@ -2,6 +2,17 @@ from flask import Flask, render_template, request, redirect, url_for, session
 import sqlite3
 import datetime
 import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+# 导入Twilio SDK用于发送短信
+try:
+    from twilio.rest import Client
+    twilio_available = True
+except ImportError:
+    print("Twilio SDK未安装，短信功能不可用")
+    twilio_available = False
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)  # 用于会话加密
@@ -9,8 +20,18 @@ app.secret_key = os.urandom(24)  # 用于会话加密
 # 授权码
 AUTHORIZATION_CODE = "LYY996"
 
+# 邮件配置
+SMTP_SERVER = "smtp.qq.com"  # 使用QQ邮箱SMTP服务器
+SMTP_PORT = 587
+SMTP_USERNAME = os.environ.get('SMTP_USERNAME', '')  # 从环境变量获取
+SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', '')  # 从环境变量获取
+
+# Twilio短信配置
+TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID', '')  # 从环境变量获取
+TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN', '')  # 从环境变量获取
+TWILIO_PHONE_NUMBER = os.environ.get('TWILIO_PHONE_NUMBER', '')  # 从环境变量获取
+
 # 数据库配置
-import os
 # 根据环境配置数据库路径
 if os.environ.get('VERCEL'):
     # Vercel环境
@@ -31,6 +52,7 @@ def init_db():
         user_id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT NOT NULL UNIQUE,
         email TEXT NOT NULL,
+        phone TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
@@ -62,6 +84,37 @@ def is_signed_in_today(user_id):
     conn.close()
     return result is not None
 
+# 获取连续未签到天数
+def get_consecutive_missed_days(user_id):
+    conn = sqlite3.connect(DATABASE)
+    cursor = conn.cursor()
+    
+    # 获取最近的签到记录
+    cursor.execute("SELECT sign_date FROM sign_records WHERE user_id = ? ORDER BY sign_date DESC", (user_id,))
+    records = cursor.fetchall()
+    
+    today = datetime.date.today()
+    
+    if not records:
+        # 如果没有签到记录，检查当前日期是否是系统启用后的第一天
+        return 0
+    
+    # 获取最近一次签到日期
+    last_sign_date = datetime.datetime.strptime(records[0][0], "%Y-%m-%d").date()
+    
+    # 计算从最后一次签到到今天的天数差
+    days_diff = (today - last_sign_date).days
+    
+    # 如果今天已经签到，未签到天数为0
+    if is_signed_in_today(user_id):
+        return 0
+    
+    # 连续未签到天数 = 天数差 - 1（因为当天还没结束）
+    consecutive_missed = days_diff
+    
+    conn.close()
+    return consecutive_missed
+
 # 获取连续签到天数
 def get_consecutive_days(user_id):
     conn = sqlite3.connect(DATABASE)
@@ -88,6 +141,116 @@ def get_consecutive_days(user_id):
     
     conn.close()
     return consecutive
+
+# 发送短信函数
+def send_sms(to_phone, body):
+    try:
+        # 检查Twilio是否可用
+        if not twilio_available:
+            print("短信发送失败: Twilio SDK未安装")
+            return False
+        
+        # 检查必要的Twilio配置
+        if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN or not TWILIO_PHONE_NUMBER:
+            print("短信发送失败: 未配置Twilio账户信息")
+            return False
+        
+        # 创建Twilio客户端
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        
+        # 发送短信
+        print(f"正在发送短信到: {to_phone}")
+        message = client.messages.create(
+            body=body,
+            from_=TWILIO_PHONE_NUMBER,
+            to=to_phone
+        )
+        
+        print(f"短信发送成功: {to_phone}, 消息ID: {message.sid}")
+        return True
+    except Exception as e:
+        print(f"短信发送失败: {str(e)}")
+        return False
+
+# 发送邮件函数
+def send_email(to_email, subject, body):
+    try:
+        # 检查必要的邮件配置
+        if not SMTP_USERNAME or not SMTP_PASSWORD:
+            print("邮件发送失败: 未配置SMTP用户名或密码")
+            return False
+        
+        # 创建邮件对象
+        msg = MIMEMultipart()
+        msg['From'] = SMTP_USERNAME
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        
+        # 添加邮件正文
+        msg.attach(MIMEText(body, 'plain', 'utf-8'))
+        
+        # 连接SMTP服务器并发送邮件
+        print(f"正在连接SMTP服务器: {SMTP_SERVER}:{SMTP_PORT}")
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10)
+        server.starttls()
+        print(f"正在登录SMTP服务器: {SMTP_USERNAME}")
+        server.login(SMTP_USERNAME, SMTP_PASSWORD)
+        text = msg.as_string()
+        print(f"正在发送邮件到: {to_email}")
+        server.sendmail(SMTP_USERNAME, to_email, text)
+        server.quit()
+        
+        print(f"邮件发送成功: {to_email}")
+        return True
+    except smtplib.SMTPAuthenticationError:
+        print("邮件发送失败: SMTP认证失败，请检查用户名和密码")
+        return False
+    except smtplib.SMTPConnectError:
+        print(f"邮件发送失败: 无法连接到SMTP服务器 {SMTP_SERVER}:{SMTP_PORT}")
+        return False
+    except smtplib.SMTPServerDisconnected:
+        print("邮件发送失败: SMTP服务器连接断开")
+        return False
+    except smtplib.SMTPException as e:
+        print(f"邮件发送失败: SMTP错误 - {str(e)}")
+        return False
+    except Exception as e:
+        print(f"邮件发送失败: 其他错误 - {str(e)}")
+        return False
+
+# 检查所有用户并发送未签到提醒
+def check_and_send_reminders():
+    try:
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        
+        # 获取所有用户
+        cursor.execute("SELECT user_id, username, email, phone FROM users")
+        users = cursor.fetchall()
+        
+        for user in users:
+            user_id, username, email, phone = user
+            
+            # 计算连续未签到天数
+            consecutive_missed = get_consecutive_missed_days(user_id)
+            
+            print(f"检查用户 {username}: 连续未签到 {consecutive_missed} 天")
+            
+            # 如果连续两天未签到，发送提醒
+            if consecutive_missed >= 2:
+                print(f"用户 {username} 连续 {consecutive_missed} 天未签到，发送提醒")
+                
+                # 发送内容
+                subject = "紧急提醒 - 活着吗"
+                body = f"您的好友{username}已连续 {consecutive_missed} 天未签到。\n\n发送时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                
+                # 发送邮件和短信
+                send_email(email, subject, body)
+                send_sms(phone, body)
+        
+        conn.close()
+    except Exception as e:
+        print(f"检查并发送提醒失败: {str(e)}")
 
 # 获取最长连续签到天数
 def get_longest_streak(user_id):
@@ -135,10 +298,14 @@ def home():
     if not session.get("authorized"):
         return redirect(url_for("login"))
     
+    # 检查所有用户并发送未签到提醒
+    check_and_send_reminders()
+    
     # 检查用户是否已登录
     user_id = session.get("user_id")
     username = session.get("username", "")
     email = session.get("email", "")
+    phone = session.get("phone", "")
     
     consecutive_days = 0
     longest_streak = 0
@@ -157,11 +324,12 @@ def home():
                 # 保存用户信息
                 username = request.form.get("username")
                 email = request.form.get("email")
+                phone = request.form.get("phone")
                 
-                if not username or not email:
-                    return render_template("home.html", username=username, email=email, error="用户名和邮箱不能为空")
+                if not username or not email or not phone:
+                    return render_template("home.html", username=username, email=email, phone=phone, error="用户名、邮箱和电话不能为空")
                 
-                print(f"保存用户信息: username={username}, email={email}")
+                print(f"保存用户信息: username={username}, email={email}, phone={phone}")
                 print(f"数据库路径: {DATABASE}")
                 
                 # 确保数据库目录存在
@@ -188,14 +356,14 @@ def home():
                 
                 if existing_user:
                     # 更新用户信息
-                    print(f"更新用户信息: user_id={existing_user[0]}, email={email}")
-                    cursor.execute("UPDATE users SET email = ? WHERE user_id = ?", (email, existing_user[0]))
+                    print(f"更新用户信息: user_id={existing_user[0]}, email={email}, phone={phone}")
+                    cursor.execute("UPDATE users SET email = ?, phone = ? WHERE user_id = ?", (email, phone, existing_user[0]))
                     user_id = existing_user[0]
                     print(f"更新成功")
                 else:
                     # 添加新用户
-                    print(f"添加新用户: username={username}, email={email}")
-                    cursor.execute("INSERT INTO users (username, email) VALUES (?, ?)", (username, email))
+                    print(f"添加新用户: username={username}, email={email}, phone={phone}")
+                    cursor.execute("INSERT INTO users (username, email, phone) VALUES (?, ?, ?)", (username, email, phone))
                     user_id = cursor.lastrowid
                     print(f"插入成功，user_id={user_id}")
                 
@@ -209,6 +377,7 @@ def home():
                 session["user_id"] = user_id
                 session["username"] = username
                 session["email"] = email
+                session["phone"] = phone
                 print(f"会话更新成功: user_id={user_id}")
                 
                 # 刷新数据
@@ -220,7 +389,7 @@ def home():
                 signed_in_today = is_signed_in_today(user_id)
                 print(f"今日已签到: {signed_in_today}")
                 
-                return render_template("home.html", username=username, email=email, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, success="用户信息已保存")
+                return render_template("home.html", username=username, email=email, phone=phone, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, success="用户信息已保存")
             except Exception as e:
                 # 打印详细的错误信息到日志
                 import traceback
@@ -228,16 +397,16 @@ def home():
                 print("错误堆栈:")
                 traceback.print_exc()
                 # 返回友好的错误信息给用户
-                return render_template("home.html", username=username, email=email, error="保存用户信息失败，请稍后重试")
+                return render_template("home.html", username=username, email=email, phone=phone, error="保存用户信息失败，请稍后重试")
         
         elif action == "sign_in":
             try:
                 # 执行签到
                 if not user_id:
-                    return render_template("home.html", username=username, email=email, error="请先保存用户信息")
+                    return render_template("home.html", username=username, email=email, phone=phone, error="请先保存用户信息")
                 
                 if signed_in_today:
-                    return render_template("home.html", username=username, email=email, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, error="您今日已签到")
+                    return render_template("home.html", username=username, email=email, phone=phone, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, error="您今日已签到")
                 
                 # 确保数据库表存在
                 init_db()
@@ -257,14 +426,43 @@ def home():
                 longest_streak = get_longest_streak(user_id)
                 signed_in_today = True
                 
-                return render_template("home.html", username=username, email=email, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, success="签到成功")
+                return render_template("home.html", username=username, email=email, phone=phone, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, success="签到成功")
             except Exception as e:
                 # 打印错误信息到日志
                 print(f"签到错误: {str(e)}")
                 # 返回友好的错误信息给用户
-                return render_template("home.html", username=username, email=email, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, error="签到失败，请稍后重试")
+                return render_template("home.html", username=username, email=email, phone=phone, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, error="签到失败，请稍后重试")
+        
+        elif action == "send_email":
+            try:
+                if not user_id:
+                    return render_template("home.html", username=username, email=email, phone=phone, error="请先保存用户信息")
+                
+                if not email or not phone:
+                    return render_template("home.html", username=username, email=email, phone=phone, error="请先设置紧急联系人邮箱和电话")
+                
+                # 发送内容
+                subject = "紧急提醒 - 活着吗"
+                body = f"您的好友{username}已连续两天未签到。\n\n发送时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                
+                # 发送邮件和短信
+                email_success = send_email(email, subject, body)
+                sms_success = send_sms(phone, body)
+                
+                # 根据发送结果返回不同的成功信息
+                if email_success and sms_success:
+                    return render_template("home.html", username=username, email=email, phone=phone, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, success="邮件和短信发送成功")
+                elif email_success:
+                    return render_template("home.html", username=username, email=email, phone=phone, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, success="邮件发送成功，短信发送失败")
+                elif sms_success:
+                    return render_template("home.html", username=username, email=email, phone=phone, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, success="短信发送成功，邮件发送失败")
+                else:
+                    return render_template("home.html", username=username, email=email, phone=phone, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, success="紧急联系人已设置，通知功能需配置邮箱和短信服务")
+            except Exception as e:
+                print(f"发送通知错误: {str(e)}")
+                return render_template("home.html", username=username, email=email, phone=phone, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, error="发送通知失败，请稍后重试")
     
-    return render_template("home.html", username=username, email=email, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today)
+    return render_template("home.html", username=username, email=email, phone=phone, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today)
 
 # 退出登录
 @app.route("/logout")
@@ -274,8 +472,11 @@ def logout():
 
 if __name__ == "__main__":
     init_db()
+    
+    # 启动时检查所有用户并发送未签到提醒
+    check_and_send_reminders()
+    
     # 生产环境配置
-    import os
     port = int(os.environ.get('PORT', 5000))
     host = os.environ.get('HOST', '0.0.0.0')
     debug = os.environ.get('FLASK_ENV') != 'production'

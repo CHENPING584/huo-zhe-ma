@@ -72,8 +72,15 @@ class SignInScheduler:
                     
                     # 如果连续2天未签到，发送提醒邮件
                     if consecutive_missed >= 2:
-                        self._send_reminder_email(email, username, consecutive_missed)
-                        logging.info(f"已发送提醒邮件给用户: {username} (ID: {user_id})")
+                        # 检查邮件发送器是否已初始化
+                        if self.email_sender:
+                            self._send_reminder_email(email, username, consecutive_missed)
+                            logging.info(f"已发送提醒邮件给用户: {username} (ID: {user_id})")
+                        else:
+                            logging.info(f"邮件发送器未初始化，跳过给用户 {username} (ID: {user_id}) 的邮件提醒")
+                        
+                        # 短信发送功能暂未实现，仅记录日志
+                        logging.info(f"短信发送功能暂未实现，跳过给用户 {username} (ID: {user_id}) 的短信提醒")
                         
                 except Exception as e:
                     logging.error(f"处理用户 {user['username']} 时出错: {e}")
@@ -116,6 +123,17 @@ class SignInScheduler:
                 logging.error(f"邮件发送失败: {recipient_email}，原因: {result['message']}")
         except Exception as e:
             logging.error(f"发送邮件时出错: {e}")
+    
+    def _send_reminder_sms(self, phone_number, username, consecutive_days):
+        """
+        发送提醒短信（暂未实现，仅记录日志）
+        :param phone_number: 收件人手机号
+        :param username: 用户名
+        :param consecutive_days: 连续未签到天数
+        """
+        # 短信功能暂未实现，仅记录日志
+        logging.info(f"短信发送功能暂未实现，跳过发送给 {username} 的短信")
+        return
     
     def start_scheduler(self):
         """

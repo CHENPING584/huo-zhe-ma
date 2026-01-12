@@ -11,11 +11,14 @@ AUTHORIZATION_CODE = "LYY996"
 
 # 数据库配置
 import os
-# 在Vercel环境中，使用/tmp目录存储SQLite数据库（临时存储）
+# 根据环境配置数据库路径
 if os.environ.get('VERCEL'):
+    # Vercel环境
     DATABASE = "/tmp/sign_in.db"
 else:
-    DATABASE = "sign_in.db"
+    # 本地环境，确保使用正确的路径分隔符
+    DATABASE = os.path.join(os.getcwd(), "sign_in.db")
+print(f"数据库路径: {DATABASE}")
 
 # 初始化数据库
 def init_db():

@@ -1,2 +1,5 @@
 print("Hello, World!")
-print("Python is working correctly.")
+print("Current working directory:", __file__)
+print("Python version:")
+import sys
+print(sys.version)

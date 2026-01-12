@@ -7,7 +7,7 @@ app = Flask(__name__)
 app.secret_key = os.urandom(24)  # 用于会话加密
 
 # 授权码
-AUTHORIZATION_CODE = "LYY338"
+AUTHORIZATION_CODE = "LYY996"
 
 # 数据库配置
 DATABASE = "sign_in.db"
@@ -218,4 +218,9 @@ def logout():
 
 if __name__ == "__main__":
     init_db()
-    app.run(debug=True)
+    # 生产环境配置
+    import os
+    port = int(os.environ.get('PORT', 5000))
+    host = os.environ.get('HOST', '0.0.0.0')
+    debug = os.environ.get('FLASK_ENV') != 'production'
+    app.run(host=host, port=port, debug=debug)

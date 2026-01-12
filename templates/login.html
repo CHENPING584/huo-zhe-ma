@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>健康打卡 - 授权码验证</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: '黑体', Arial, sans-serif;
+            background-color: #E0F7FA;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        .container {
+            background-color: #FFFFFF;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #4CBB17;
+            margin-bottom: 30px;
+            font-size: 24px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333333;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #E0E0E0;
+            border-radius: 5px;
+            font-size: 16px;
+            font-family: '黑体', Arial, sans-serif;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #4CBB17;
+        }
+        
+        .error {
+            color: #fc8181;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        
+        button {
+            width: 100%;
+            padding: 15px;
+            background-color: #4CBB17;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-family: '黑体', Arial, sans-serif;
+        }
+        
+        button:hover {
+            background-color: #3A9E0F;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>健康打卡</h1>
+        <form method="POST">
+            <div class="form-group">
+                <label for="code">请输入授权码</label>
+                <input type="text" id="code" name="code" placeholder="例如：LYY338" required>
+                {% if error %}
+                <div class="error">{{ error }}</div>
+                {% endif %}
+            </div>
+            <button type="submit">进入应用</button>
+        </form>
+    </div>
+</body>
+</html>

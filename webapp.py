@@ -10,7 +10,12 @@ app.secret_key = os.urandom(24)  # 用于会话加密
 AUTHORIZATION_CODE = "LYY996"
 
 # 数据库配置
-DATABASE = "sign_in.db"
+import os
+# 在Vercel环境中，使用/tmp目录存储SQLite数据库（临时存储）
+if os.environ.get('VERCEL'):
+    DATABASE = "/tmp/sign_in.db"
+else:
+    DATABASE = "sign_in.db"
 
 # 初始化数据库
 def init_db():
@@ -153,42 +158,72 @@ def home():
                 if not username or not email:
                     return render_template("home.html", username=username, email=email, error="用户名和邮箱不能为空")
                 
-                # 确保数据库表存在
-                init_db()
+                print(f"保存用户信息: username={username}, email={email}")
+                print(f"数据库路径: {DATABASE}")
                 
+                # 确保数据库目录存在
+                db_dir = os.path.dirname(DATABASE)
+                if db_dir and not os.path.exists(db_dir):
+                    os.makedirs(db_dir)
+                    print(f"创建数据库目录: {db_dir}")
+                
+                # 确保数据库表存在
+                print("调用init_db()")
+                init_db()
+                print("init_db()调用完成")
+                
+                print("连接数据库")
                 conn = sqlite3.connect(DATABASE)
                 cursor = conn.cursor()
+                print("数据库连接成功")
                 
                 # 检查用户是否已存在
+                print(f"检查用户是否存在: {username}")
                 cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
                 existing_user = cursor.fetchone()
+                print(f"查询结果: {existing_user}")
                 
                 if existing_user:
                     # 更新用户信息
+                    print(f"更新用户信息: user_id={existing_user[0]}, email={email}")
                     cursor.execute("UPDATE users SET email = ? WHERE user_id = ?", (email, existing_user[0]))
                     user_id = existing_user[0]
+                    print(f"更新成功")
                 else:
                     # 添加新用户
+                    print(f"添加新用户: username={username}, email={email}")
                     cursor.execute("INSERT INTO users (username, email) VALUES (?, ?)", (username, email))
                     user_id = cursor.lastrowid
+                    print(f"插入成功，user_id={user_id}")
                 
+                print("提交事务")
                 conn.commit()
+                print("事务提交成功")
                 conn.close()
+                print("数据库连接关闭")
                 
                 # 更新会话
                 session["user_id"] = user_id
                 session["username"] = username
                 session["email"] = email
+                print(f"会话更新成功: user_id={user_id}")
                 
                 # 刷新数据
+                print("刷新数据")
                 consecutive_days = get_consecutive_days(user_id)
+                print(f"连续天数: {consecutive_days}")
                 longest_streak = get_longest_streak(user_id)
+                print(f"最长连续: {longest_streak}")
                 signed_in_today = is_signed_in_today(user_id)
+                print(f"今日已签到: {signed_in_today}")
                 
                 return render_template("home.html", username=username, email=email, consecutive_days=consecutive_days, longest_streak=longest_streak, signed_in_today=signed_in_today, success="用户信息已保存")
             except Exception as e:
-                # 打印错误信息到日志
+                # 打印详细的错误信息到日志
+                import traceback
                 print(f"保存用户信息错误: {str(e)}")
+                print("错误堆栈:")
+                traceback.print_exc()
                 # 返回友好的错误信息给用户
                 return render_template("home.html", username=username, email=email, error="保存用户信息失败，请稍后重试")
         

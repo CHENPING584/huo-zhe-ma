@@ -6,14 +6,6 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# 导入Twilio SDK用于发送短信
-try:
-    from twilio.rest import Client
-    twilio_available = True
-except ImportError:
-    print("Twilio SDK未安装，短信功能不可用")
-    twilio_available = False
-
 app = Flask(__name__)
 app.secret_key = os.urandom(24)  # 用于会话加密
 
@@ -23,15 +15,17 @@ AUTHORIZATION_CODE = "LYY996"
 # 邮件配置
 SMTP_SERVER = "smtp.qq.com"  # 使用QQ邮箱SMTP服务器
 SMTP_PORT = 587
-# 默认邮件配置，用户可以直接使用这些配置发送邮件
 SMTP_USERNAME = os.environ.get('SMTP_USERNAME', '')  # 从环境变量获取
 SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', '')  # 从环境变量获取
 
-# Twilio短信配置
-# 默认短信配置，用户可以直接使用这些配置发送短信
-TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID', '')  # 从环境变量获取
-TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN', '')  # 从环境变量获取
-TWILIO_PHONE_NUMBER = os.environ.get('TWILIO_PHONE_NUMBER', '')  # 从环境变量获取
+# 从config.ini读取邮件配置作为备份
+import configparser
+config = configparser.ConfigParser()
+config.read('config.ini', encoding='utf-8')
+if not SMTP_USERNAME:
+    SMTP_USERNAME = config.get('Email', 'sender_email', fallback='')
+if not SMTP_PASSWORD:
+    SMTP_PASSWORD = config.get('Email', 'sender_password', fallback='')
 
 # 数据库配置
 # 根据环境配置数据库路径
@@ -53,8 +47,8 @@ def init_db():
     CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT NOT NULL UNIQUE,
-        email TEXT NOT NULL,
-        phone TEXT NOT NULL,
+        email TEXT,
+        phone TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
@@ -147,40 +141,38 @@ def get_consecutive_days(user_id):
 # 发送短信函数
 def send_sms(to_phone, body):
     try:
-        # 检查Twilio是否可用
-        if not twilio_available:
-            print("短信发送成功: 使用默认短信配置")
+        print(f"正在准备发送短信到: {to_phone}")
+        
+        # 从body中提取用户名和连续未签到天数
+        import re
+        username_match = re.search(r'您的好友(\w+)', body)
+        days_match = re.search(r'已连续(\d+)天', body)
+        
+        username = username_match.group(1) if username_match else "用户"
+        consecutive_days = int(days_match.group(1)) if days_match else 2
+        
+        # 使用腾讯云短信服务
+        from tencent_sms import TencentSMS
+        sms_client = TencentSMS()
+        result = sms_client.send_sms(to_phone, username, consecutive_days)
+        
+        if result['success']:
+            print(f"短信发送成功: {to_phone}, {result['message']}")
             return True
-        
-        # 检查必要的Twilio配置
-        if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN or not TWILIO_PHONE_NUMBER:
-            print("短信发送成功: 使用默认短信配置")
-            return True
-        
-        # 创建Twilio客户端
-        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-        
-        # 发送短信
-        print(f"正在发送短信到: {to_phone}")
-        message = client.messages.create(
-            body=body,
-            from_=TWILIO_PHONE_NUMBER,
-            to=to_phone
-        )
-        
-        print(f"短信发送成功: {to_phone}, 消息ID: {message.sid}")
-        return True
+        else:
+            print(f"短信发送失败: {to_phone}, {result['message']}")
+            return False
     except Exception as e:
-        print(f"短信发送成功: {to_phone} (使用模拟发送)")
-        return True
+        print(f"短信发送失败: {str(e)}")
+        return False
 
 # 发送邮件函数
 def send_email(to_email, subject, body):
     try:
         # 检查必要的邮件配置
         if not SMTP_USERNAME or not SMTP_PASSWORD:
-            print("邮件发送成功: 使用默认邮件配置")
-            return True
+            print("邮件发送失败: 未配置SMTP用户名或密码")
+            return False
         
         # 创建邮件对象
         msg = MIMEMultipart()
@@ -204,9 +196,21 @@ def send_email(to_email, subject, body):
         
         print(f"邮件发送成功: {to_email}")
         return True
+    except smtplib.SMTPAuthenticationError:
+        print("邮件发送失败: SMTP认证失败，请检查用户名和密码")
+        return False
+    except smtplib.SMTPConnectError:
+        print(f"邮件发送失败: 无法连接到SMTP服务器 {SMTP_SERVER}:{SMTP_PORT}")
+        return False
+    except smtplib.SMTPServerDisconnected:
+        print("邮件发送失败: SMTP服务器连接断开")
+        return False
+    except smtplib.SMTPException as e:
+        print(f"邮件发送失败: SMTP错误 - {str(e)}")
+        return False
     except Exception as e:
-        print(f"邮件发送成功: {to_email} (使用模拟发送)")
-        return True
+        print(f"邮件发送失败: 其他错误 - {str(e)}")
+        return False
 
 # 检查所有用户并发送未签到提醒
 def check_and_send_reminders():
@@ -234,9 +238,11 @@ def check_and_send_reminders():
                 subject = "紧急提醒 - 活着吗"
                 body = f"您的好友{username}已连续 {consecutive_missed} 天未签到。\n\n发送时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                 
-                # 发送邮件和短信
-                send_email(email, subject, body)
-                send_sms(phone, body)
+                # 发送邮件和短信（只发送已配置的联系方式）
+                if email:
+                    send_email(email, subject, body)
+                if phone:
+                    send_sms(phone, body)
         
         conn.close()
     except Exception as e:
@@ -316,8 +322,8 @@ def home():
                 email = request.form.get("email")
                 phone = request.form.get("phone")
                 
-                if not username or not email or not phone:
-                    return render_template("home.html", username=username, email=email, phone=phone, error="用户名、邮箱和电话不能为空")
+                if not username or not (email or phone):
+                    return render_template("home.html", username=username, email=email, phone=phone, error="用户名不能为空，邮箱和电话至少填写一个")
                 
                 print(f"保存用户信息: username={username}, email={email}, phone={phone}")
                 print(f"数据库路径: {DATABASE}")
@@ -428,8 +434,8 @@ def home():
                 if not user_id:
                     return render_template("home.html", username=username, email=email, phone=phone, error="请先保存用户信息")
                 
-                if not email or not phone:
-                    return render_template("home.html", username=username, email=email, phone=phone, error="请先设置紧急联系人邮箱和电话")
+                if not email and not phone:
+                    return render_template("home.html", username=username, email=email, phone=phone, error="请先设置紧急联系人邮箱或电话")
                 
                 # 发送内容
                 subject = "紧急提醒 - 活着吗"

@@ -70,17 +70,26 @@ class SignInScheduler:
                     
                     logging.info(f"检查用户: {username} (ID: {user_id})，最后签到日期: {last_sign_date}，连续未签到天数: {consecutive_missed}")
                     
-                    # 如果连续2天未签到，发送提醒邮件
+                    # 如果连续2天未签到，发送提醒
                     if consecutive_missed >= 2:
-                        # 检查邮件发送器是否已初始化
-                        if self.email_sender:
-                            self._send_reminder_email(email, username, consecutive_missed)
-                            logging.info(f"已发送提醒邮件给用户: {username} (ID: {user_id})")
-                        else:
-                            logging.info(f"邮件发送器未初始化，跳过给用户 {username} (ID: {user_id}) 的邮件提醒")
+                        # 检查用户是否有邮箱或电话
+                        if email:
+                            # 检查邮件发送器是否已初始化
+                            if self.email_sender:
+                                self._send_reminder_email(email, username, consecutive_missed)
+                                logging.info(f"已发送提醒邮件给用户: {username} (ID: {user_id})")
+                            else:
+                                logging.info(f"邮件发送器未初始化，跳过给用户 {username} (ID: {user_id}) 的邮件提醒")
                         
-                        # 短信发送功能暂未实现，仅记录日志
-                        logging.info(f"短信发送功能暂未实现，跳过给用户 {username} (ID: {user_id}) 的短信提醒")
+                        phone = user['phone']
+                        if phone:
+                            # 发送提醒短信
+                            self._send_reminder_sms(phone, username, consecutive_missed)
+                            logging.info(f"已发送提醒短信给用户: {username} (ID: {user_id})")
+                        
+                        # 如果用户没有邮箱和电话，记录日志
+                        if not email and not phone:
+                            logging.info(f"用户 {username} (ID: {user_id}) 没有配置邮箱和电话，无法发送提醒")
                         
                 except Exception as e:
                     logging.error(f"处理用户 {user['username']} 时出错: {e}")
@@ -126,14 +135,25 @@ class SignInScheduler:
     
     def _send_reminder_sms(self, phone_number, username, consecutive_days):
         """
-        发送提醒短信（暂未实现，仅记录日志）
+        发送提醒短信
         :param phone_number: 收件人手机号
         :param username: 用户名
         :param consecutive_days: 连续未签到天数
         """
-        # 短信功能暂未实现，仅记录日志
-        logging.info(f"短信发送功能暂未实现，跳过发送给 {username} 的短信")
-        return
+        try:
+            logging.info(f"发送提醒短信给: {phone_number}，用户名: {username}，连续未签到: {consecutive_days}天")
+            
+            # 使用腾讯云短信服务
+            from tencent_sms import TencentSMS
+            sms_client = TencentSMS()
+            result = sms_client.send_sms(phone_number, username, consecutive_days)
+            
+            if result['success']:
+                logging.info(f"短信发送成功: {phone_number}，{result['message']}")
+            else:
+                logging.error(f"短信发送失败: {phone_number}，{result['message']}")
+        except Exception as e:
+            logging.error(f"发送短信时出错: {e}")
     
     def start_scheduler(self):
         """

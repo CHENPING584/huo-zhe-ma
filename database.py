@@ -31,12 +31,13 @@ class SignInDatabase:
         创建用户表和签到记录表
         """
         try:
-            # 用户表：存储用户名、邮箱、注册时间
+            # 用户表：存储用户名、邮箱、电话、注册时间
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     user_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     username TEXT NOT NULL UNIQUE,
-                    email TEXT NOT NULL UNIQUE,
+                    email TEXT UNIQUE,
+                    phone TEXT UNIQUE,
                     register_time DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
@@ -60,25 +61,29 @@ class SignInDatabase:
             self.conn.rollback()
             raise
     
-    def add_user(self, username, email):
+    def add_user(self, username, email=None, phone=None):
         """
         添加新用户
         :param username: 用户名
-        :param email: 邮箱
+        :param email: 邮箱（可选）
+        :param phone: 电话（可选）
         :return: 用户ID，如果用户已存在返回None
         """
-        if not username or not email:
-            raise ValueError("用户名和邮箱不能为空")
+        if not username:
+            raise ValueError("用户名不能为空")
+        
+        if not email and not phone:
+            raise ValueError("邮箱和电话不能同时为空")
         
         try:
             self.cursor.execute(
-                "INSERT INTO users (username, email) VALUES (?, ?)",
-                (username, email)
+                "INSERT INTO users (username, email, phone) VALUES (?, ?, ?)",
+                (username, email, phone)
             )
             self.conn.commit()
             return self.cursor.lastrowid
         except sqlite3.IntegrityError:
-            # 用户名或邮箱已存在
+            # 用户名、邮箱或电话已存在
             return None
         except sqlite3.Error as e:
             print(f"添加用户失败: {e}")
@@ -99,7 +104,8 @@ class SignInDatabase:
                     'user_id': user[0],
                     'username': user[1],
                     'email': user[2],
-                    'register_time': user[3]
+                    'phone': user[3],
+                    'register_time': user[4]
                 }
             return None
         except sqlite3.Error as e:
@@ -120,22 +126,24 @@ class SignInDatabase:
                     'user_id': user[0],
                     'username': user[1],
                     'email': user[2],
-                    'register_time': user[3]
+                    'phone': user[3],
+                    'register_time': user[4]
                 }
             return None
         except sqlite3.Error as e:
             print(f"获取用户信息失败: {e}")
             raise
     
-    def update_user(self, user_id, username=None, email=None):
+    def update_user(self, user_id, username=None, email=None, phone=None):
         """
         更新用户信息
         :param user_id: 用户ID
         :param username: 新用户名（可选）
         :param email: 新邮箱（可选）
+        :param phone: 新电话（可选）
         :return: 是否更新成功
         """
-        if not username and not email:
+        if not username and not email and not phone:
             return False
         
         try:
@@ -149,6 +157,9 @@ class SignInDatabase:
             if email:
                 update_fields.append("email = ?")
                 update_values.append(email)
+            if phone:
+                update_fields.append("phone = ?")
+                update_values.append(phone)
             
             update_values.append(user_id)
             
@@ -195,7 +206,8 @@ class SignInDatabase:
                 'user_id': user[0],
                 'username': user[1],
                 'email': user[2],
-                'register_time': user[3]
+                'phone': user[3],
+                'register_time': user[4]
             } for user in users]
         except sqlite3.Error as e:
             print(f"获取所有用户失败: {e}")
@@ -304,7 +316,7 @@ class SignInDatabase:
         """
         try:
             self.cursor.execute("""
-                SELECT u.user_id, u.username, u.email, s.sign_date, s.consecutive_missed
+                SELECT u.user_id, u.username, u.email, u.phone, s.sign_date, s.consecutive_missed
                 FROM users u
                 LEFT JOIN sign_records s ON u.user_id = s.user_id
                 WHERE s.sign_date = (SELECT MAX(sign_date) FROM sign_records WHERE user_id = u.user_id)
@@ -315,8 +327,9 @@ class SignInDatabase:
                 'user_id': record[0],
                 'username': record[1],
                 'email': record[2],
-                'last_sign_date': record[3],
-                'consecutive_missed': record[4] if record[4] is not None else 0
+                'phone': record[3],
+                'last_sign_date': record[4],
+                'consecutive_missed': record[5] if record[5] is not None else 0
             } for record in records]
         except sqlite3.Error as e:
             print(f"获取所有签到记录失败: {e}")

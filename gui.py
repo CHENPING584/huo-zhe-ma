@@ -192,7 +192,7 @@ class SignInApp:
             
             # 紧急联系人邮箱输入区域
             email_container = tk.Frame(inputs_container, bg=self.colors['card'])
-            email_container.pack(fill=tk.X)
+            email_container.pack(fill=tk.X, pady=(0, 15))
             
             # 邮箱标签 - 字体大小设置为10磅
             email_label = ttk.Label(email_container, text="紧急联系人邮箱", 
@@ -210,6 +210,27 @@ class SignInApp:
                 justify=tk.LEFT
             )
             self.email_entry.pack(fill=tk.X, expand=True, ipady=8)  # 调整高度
+            
+            # 紧急联系人电话输入区域
+            phone_container = tk.Frame(inputs_container, bg=self.colors['card'])
+            phone_container.pack(fill=tk.X)
+            
+            # 电话标签 - 字体大小设置为10磅
+            phone_label = ttk.Label(phone_container, text="紧急联系人电话", 
+                                   font=('黑体', 10, 'bold'),
+                                   foreground=self.colors['text'])
+            phone_label.pack(side=tk.TOP, anchor=tk.W, pady=(0, 10))
+            
+            # 电话输入框
+            self.phone_var = tk.StringVar()
+            self.phone_entry = ttk.Entry(
+                phone_container, 
+                textvariable=self.phone_var, 
+                style="Custom.TEntry",
+                width=30,
+                justify=tk.LEFT
+            )
+            self.phone_entry.pack(fill=tk.X, expand=True, ipady=8)  # 调整高度
         else:
             # 电脑端：左右并排布局
             input_row = tk.Frame(inputs_container, bg=self.colors['card'])
@@ -255,9 +276,34 @@ class SignInApp:
             )
             self.email_entry.pack(fill=tk.X, expand=True, ipady=8)  # 调整高度
         
+        # 电话输入行（电脑端）
+        if not self.is_mobile:
+            phone_row = tk.Frame(inputs_container, bg=self.colors['card'])
+            phone_row.pack(fill=tk.X)
+            
+            # 紧急联系人电话输入区域
+            phone_container = tk.Frame(phone_row, bg=self.colors['card'])
+            phone_container.pack(fill=tk.X, expand=True)
+            
+            # 电话标签 - 字体大小设置为10磅
+            phone_label = ttk.Label(phone_container, text="紧急联系人电话", 
+                                   font=('黑体', 10, 'bold'),
+                                   foreground=self.colors['text'])
+            phone_label.pack(side=tk.TOP, anchor=tk.W, pady=(0, 10))
+            
+            # 电话输入框
+            self.phone_var = tk.StringVar()
+            self.phone_entry = ttk.Entry(
+                phone_container, 
+                textvariable=self.phone_var, 
+                style="Custom.TEntry",
+                justify=tk.LEFT
+            )
+            self.phone_entry.pack(fill=tk.X, expand=True, ipady=8)  # 调整高度
+        
         # 添加提示文案（位于输入框下方、签到按钮上方）
         self.warning_label = ttk.Label(user_frame, 
-                                       text="若连续两日未签到，系统将自动向您填写的紧急联系人邮箱发送提醒邮件",
+                                       text="若连续两日未签到，系统将自动向您填写的紧急联系人邮箱或电话发送提醒",
                                        font=('黑体', 12, 'bold'),
                                        foreground=self.colors['text_light'],
                                        wraplength=380,
@@ -821,13 +867,18 @@ class SignInApp:
         """
         username = self.username_var.get().strip()
         email = self.email_var.get().strip()
+        phone = self.phone_var.get().strip()
         
-        if not username or not email:
-            messagebox.showwarning("警告", "用户名和邮箱不能为空！")
+        if not username:
+            messagebox.showwarning("警告", "用户名不能为空！")
             return False
         
-        # 验证邮箱格式（简单验证）
-        if "@" not in email or "." not in email:
+        if not email and not phone:
+            messagebox.showwarning("警告", "邮箱和电话不能同时为空！")
+            return False
+        
+        # 验证邮箱格式（如果提供了邮箱）
+        if email and ("@" not in email or "." not in email):
             messagebox.showwarning("警告", "请输入有效的邮箱地址！")
             return False
         
@@ -836,7 +887,7 @@ class SignInApp:
             existing_user = self.db.get_user_by_username(username)
             if existing_user:
                 # 更新用户信息
-                success = self.db.update_user(existing_user["user_id"], email=email)
+                success = self.db.update_user(existing_user["user_id"], email=email, phone=phone)
                 if success:
                     self.current_user = existing_user
                     # 显示状态提示
@@ -852,7 +903,7 @@ class SignInApp:
                     return False
             else:
                 # 添加新用户
-                user_id = self.db.add_user(username, email)
+                user_id = self.db.add_user(username, email, phone)
                 if user_id:
                     self.current_user = self.db.get_user_by_id(user_id)
                     # 显示状态提示
@@ -864,7 +915,7 @@ class SignInApp:
                     self._refresh_stats_cards()
                     return True
                 else:
-                    messagebox.showerror("错误", "用户名或邮箱已存在！")
+                    messagebox.showerror("错误", "用户名、邮箱或电话已存在！")
                     return False
         except Exception as e:
             messagebox.showerror("错误", f"保存用户信息失败：{str(e)}")

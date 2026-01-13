@@ -156,14 +156,21 @@ class EmailReminder:
 # 测试代码
 if __name__ == "__main__":
     # 测试邮件发送功能
-    # 注意：请替换为您自己的邮箱和授权码
+    # 使用config.ini中的配置
+    import configparser
+    
+    config = configparser.ConfigParser()
+    config.read('config.ini', encoding='utf-8')
+    sender_email = config.get('Email', 'sender_email')
+    sender_password = config.get('Email', 'sender_password')
+    
     test_sender = EmailReminder(
-        sender_email="your_email@qq.com",  # 请替换为您的发件人邮箱
-        sender_password="your_authorization_code"  # 请替换为您的授权码
+        sender_email=sender_email,
+        sender_password=sender_password
     )
     
     test_result = test_sender.send_email(
-        recipient_email="test@example.com",  # 请替换为测试收件人邮箱
+        recipient_email=sender_email,  # 发送给自己测试
         subject="签到提醒测试",
         content="这是一封签到提醒测试邮件，无需回复。\n发送时间：" + time.strftime("%Y-%m-%d %H:%M:%S")
     )

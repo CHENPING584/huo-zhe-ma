@@ -27,3 +27,6 @@ env/
 # 忽略测试文件
 .pytest_cache/
 .testmondata
+
+.vercel
+.env*.local

@@ -260,6 +260,13 @@
                     </div>
                 </div>
                 
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="phone">紧急联系人电话</label>
+                        <input type="tel" id="phone" name="phone" value="{{ phone }}" placeholder="请输入紧急联系人电话">
+                    </div>
+                </div>
+                
                 {% if error %}
                 <div class="error">{{ error }}</div>
                 {% endif %}
@@ -268,7 +275,16 @@
                 <div class="success">{{ success }}</div>
                 {% endif %}
                 
-                <button type="submit" class="settings-btn">保存用户信息</button>
+                <div class="form-row" style="justify-content: space-between;">
+                    <button type="submit" class="settings-btn" style="flex: 1; margin-right: 10px;">保存用户信息</button>
+                </div>
+            </form>
+            
+            <!-- 单独的邮件发送表单 -->
+            <form method="POST" style="margin-top: 15px;">
+                <div class="form-row" style="justify-content: flex-end;">
+                    <button type="submit" name="action" value="send_email" class="settings-btn" style="flex: 1; background-color: #FF6B6B; color: white;">一键发送邮件短信</button>
+                </div>
             </form>
         </div>
         

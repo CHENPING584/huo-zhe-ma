@@ -1,10 +1,16 @@
-import tkinter as tk
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
-root = tk.Tk()
-root.title("简单测试")
-root.geometry("400x300")
+print("Starting simple test...")
 
-label = tk.Label(root, text="Hello, World!")
-label.pack(pady=20)
+try:
+    from database import SignInDatabase
+    db = SignInDatabase()
+    print("Database connection successful")
+    db.close()
+except Exception as e:
+    print(f"Database error: {e}")
+    import traceback
+    traceback.print_exc()
 
-root.mainloop()
+print("Test completed")
